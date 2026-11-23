@@ -17,6 +17,7 @@ namespace ZynCopy
         private Button _btnClearQueue;
         private ComboBox _cmbDest;
         private ComboBox _cmbSpeed;
+        private CheckBox _chkBundleArchive;
         private Button _btnCopy;
         private Button _btnMove;
         private Button _btnPurge;
@@ -83,7 +84,7 @@ namespace ZynCopy
         private void InitializeComponent()
         {
             this.Text = WindowTitle;
-            this.Size = new Size(680, 520);
+            this.Size = new Size(680, 545);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -219,16 +220,26 @@ namespace ZynCopy
             _cmbSpeed.BackColor = Color.FromArgb(30, 41, 59);
             _cmbSpeed.ForeColor = Color.White;
             _cmbSpeed.Font = fontRegular;
-            _cmbSpeed.Items.Add("🚀 Turbo (8x Streams)");
-            _cmbSpeed.Items.Add("🌪️ Hyper (16x Streams)");
-            _cmbSpeed.Items.Add("⚡ Eco (4x Streams)");
+            _cmbSpeed.Items.Add("🚀 Turbo (16x Streams)");
+            _cmbSpeed.Items.Add("🌪️ Hyper (32x Streams)");
+            _cmbSpeed.Items.Add("⚡ Eco (8x Streams)");
             _cmbSpeed.SelectedIndex = 0;
             this.Controls.Add(_cmbSpeed);
+
+            // ================= ARCHIVE BUNDLER TOGGLE =================
+            _chkBundleArchive = new CheckBox();
+            _chkBundleArchive.Text = "📦 Bundle Folder as Single Cloud Archive (.zip) - Maximum Speed & Zero API Lag";
+            _chkBundleArchive.Location = new Point(22, 175);
+            _chkBundleArchive.Size = new Size(620, 22);
+            _chkBundleArchive.Font = fontSub;
+            _chkBundleArchive.ForeColor = Color.FromArgb(56, 189, 248);
+            _chkBundleArchive.Checked = false;
+            this.Controls.Add(_chkBundleArchive);
 
             // ================= ACTION BUTTONS =================
             _btnCopy = new Button();
             _btnCopy.Text = "🚀 Turbo Copy";
-            _btnCopy.Location = new Point(20, 180);
+            _btnCopy.Location = new Point(20, 202);
             _btnCopy.Size = new Size(150, 36);
             _btnCopy.BackColor = Color.FromArgb(14, 165, 233); // Sky Blue
             _btnCopy.ForeColor = Color.White;
@@ -240,7 +251,7 @@ namespace ZynCopy
 
             _btnMove = new Button();
             _btnMove.Text = "📦 Turbo Move";
-            _btnMove.Location = new Point(180, 180);
+            _btnMove.Location = new Point(180, 202);
             _btnMove.Size = new Size(150, 36);
             _btnMove.BackColor = Color.FromArgb(16, 185, 129); // Emerald
             _btnMove.ForeColor = Color.White;
@@ -252,7 +263,7 @@ namespace ZynCopy
 
             _btnPurge = new Button();
             _btnPurge.Text = "🗑️ Instant Purge";
-            _btnPurge.Location = new Point(340, 180);
+            _btnPurge.Location = new Point(340, 202);
             _btnPurge.Size = new Size(140, 36);
             _btnPurge.BackColor = Color.FromArgb(239, 68, 68); // Red
             _btnPurge.ForeColor = Color.White;
@@ -264,7 +275,7 @@ namespace ZynCopy
 
             _btnCancel = new Button();
             _btnCancel.Text = "⏹ Cancel";
-            _btnCancel.Location = new Point(490, 180);
+            _btnCancel.Location = new Point(490, 202);
             _btnCancel.Size = new Size(155, 36);
             _btnCancel.BackColor = Color.FromArgb(71, 85, 105);
             _btnCancel.ForeColor = Color.White;
@@ -276,21 +287,21 @@ namespace ZynCopy
             this.Controls.Add(_btnCancel);
 
             // ================= DASHBOARD METRICS HUD =================
-            Panel pnlSpeed = CreateCard(20, 228, 200, 70);
+            Panel pnlSpeed = CreateCard(20, 248, 200, 70);
             Label lblSpeedTitle = new Label { Text = "⚡ TRANSFER SPEED", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
             _lblSpeedValue = new Label { Text = "0.0 MB/s", Location = new Point(10, 26), Size = new Size(180, 32), Font = fontCardValue, ForeColor = Color.FromArgb(56, 189, 248) };
             pnlSpeed.Controls.Add(lblSpeedTitle);
             pnlSpeed.Controls.Add(_lblSpeedValue);
             this.Controls.Add(pnlSpeed);
 
-            Panel pnlEta = CreateCard(230, 228, 200, 70);
+            Panel pnlEta = CreateCard(230, 248, 200, 70);
             Label lblEtaTitle = new Label { Text = "⏱️ ESTIMATED TIME LEFT", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
             _lblEtaValue = new Label { Text = "--", Location = new Point(10, 26), Size = new Size(180, 32), Font = fontCardValue, ForeColor = Color.FromArgb(52, 211, 153) };
             pnlEta.Controls.Add(lblEtaTitle);
             pnlEta.Controls.Add(_lblEtaValue);
             this.Controls.Add(pnlEta);
 
-            Panel pnlProg = CreateCard(440, 228, 205, 70);
+            Panel pnlProg = CreateCard(440, 248, 205, 70);
             Label lblProgTitle = new Label { Text = "📊 QUEUE / PROGRESS", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
             _lblProgressValue = new Label { Text = "Idle", Location = new Point(10, 26), Size = new Size(185, 32), Font = new Font("Segoe UI", 11.5f, FontStyle.Bold), ForeColor = Color.FromArgb(244, 244, 245) };
             pnlProg.Controls.Add(lblProgTitle);
@@ -299,14 +310,14 @@ namespace ZynCopy
 
             // Progress Bar & Percentage
             _progressBar = new ProgressBar();
-            _progressBar.Location = new Point(20, 310);
+            _progressBar.Location = new Point(20, 330);
             _progressBar.Size = new Size(575, 14);
             _progressBar.Style = ProgressBarStyle.Continuous;
             this.Controls.Add(_progressBar);
 
             _lblPercent = new Label();
             _lblPercent.Text = "0%";
-            _lblPercent.Location = new Point(600, 308);
+            _lblPercent.Location = new Point(600, 328);
             _lblPercent.Size = new Size(50, 18);
             _lblPercent.Font = fontBold;
             _lblPercent.ForeColor = Color.FromArgb(56, 189, 248);
@@ -314,8 +325,8 @@ namespace ZynCopy
 
             // Active File Label
             _lblActiveFile = new Label();
-            _lblActiveFile.Text = "Ready. Select multiple files in Explorer or drag & drop here.";
-            _lblActiveFile.Location = new Point(22, 332);
+            _lblActiveFile.Text = "Ready. Select files, check Archive Mode if transferring big folders to cloud.";
+            _lblActiveFile.Location = new Point(22, 352);
             _lblActiveFile.Size = new Size(420, 20);
             _lblActiveFile.Font = fontSub;
             _lblActiveFile.ForeColor = Color.FromArgb(203, 213, 225);
@@ -324,7 +335,7 @@ namespace ZynCopy
             // Toggle Log Button
             _btnToggleLog = new Button();
             _btnToggleLog.Text = "📋 Show Technical Stream Log";
-            _btnToggleLog.Location = new Point(445, 330);
+            _btnToggleLog.Location = new Point(445, 350);
             _btnToggleLog.Size = new Size(200, 24);
             _btnToggleLog.BackColor = Color.FromArgb(30, 41, 59);
             _btnToggleLog.FlatStyle = FlatStyle.Flat;
@@ -335,8 +346,8 @@ namespace ZynCopy
 
             // Collapsible Log Box
             _txtLog = new TextBox();
-            _txtLog.Location = new Point(20, 362);
-            _txtLog.Size = new Size(625, 100);
+            _txtLog.Location = new Point(20, 382);
+            _txtLog.Size = new Size(625, 105);
             _txtLog.Multiline = true;
             _txtLog.ReadOnly = true;
             _txtLog.ScrollBars = ScrollBars.Vertical;
@@ -369,7 +380,7 @@ namespace ZynCopy
             {
                 if (string.IsNullOrEmpty(p)) continue;
                 string clean = p.Trim('"', ' ', '\t', '\r', '\n');
-                if (clean.StartsWith("--")) continue; // Skip flags
+                if (clean.StartsWith("--")) continue;
 
                 if (File.Exists(clean) || Directory.Exists(clean))
                 {
@@ -419,7 +430,7 @@ namespace ZynCopy
             Panel p = new Panel();
             p.Location = new Point(x, y);
             p.Size = new Size(w, h);
-            p.BackColor = Color.FromArgb(30, 41, 59); // Slate 800
+            p.BackColor = Color.FromArgb(30, 41, 59);
             return p;
         }
 
@@ -428,7 +439,7 @@ namespace ZynCopy
             _isLogExpanded = !_isLogExpanded;
             _txtLog.Visible = _isLogExpanded;
             _btnToggleLog.Text = _isLogExpanded ? "▲ Hide Technical Stream Log" : "📋 Show Technical Stream Log";
-            this.Size = _isLogExpanded ? new Size(680, 520) : new Size(680, 410);
+            this.Size = _isLogExpanded ? new Size(680, 545) : new Size(680, 435);
         }
 
         private void PopulateDrives()
@@ -567,7 +578,7 @@ namespace ZynCopy
                 _lblSpeedValue.Text = "Purging...";
                 _lblEtaValue.Text = "Fast";
                 _lblProgressValue.Text = "Instant Clean";
-                _engine.ExecuteQueue(targets, null, TransferMode.Purge, GetSelectedSpeed());
+                _engine.ExecuteQueue(targets, null, TransferMode.Purge, GetSelectedSpeed(), false);
             }
         }
 
@@ -606,7 +617,7 @@ namespace ZynCopy
             _lblEtaValue.Text = "Calculating...";
             _lblProgressValue.Text = string.Format("0 / {0} items", targets.Count);
             _lblActiveFile.Text = string.Format("Connecting pipeline for {0} queued item(s)...", targets.Count);
-            _engine.ExecuteQueue(targets, dest, mode, GetSelectedSpeed());
+            _engine.ExecuteQueue(targets, dest, mode, GetSelectedSpeed(), _chkBundleArchive.Checked);
         }
 
         private void OnCancelClick(object sender, EventArgs e)
@@ -621,6 +632,7 @@ namespace ZynCopy
             _btnMove.Enabled = !busy;
             _btnPurge.Enabled = !busy;
             _btnClearQueue.Enabled = !busy;
+            _chkBundleArchive.Enabled = !busy;
             _btnCancel.Enabled = busy;
             if (busy)
             {

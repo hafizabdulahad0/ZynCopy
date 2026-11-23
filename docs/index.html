@@ -532,7 +532,7 @@
         <a href="#features">Features</a>
         <a href="#benchmarks">Benchmarks</a>
         <a href="https://github.com/hafizabdulahad0/ZynCopy" target="_blank">GitHub</a>
-        <a href="https://github.com/hafizabdulahad0/ZynCopy/releases" class="nav-btn">Download v1.1</a>
+        <a href="https://github.com/hafizabdulahad0/ZynCopy/releases" class="nav-btn">Download v1.2</a>
       </nav>
     </header>
 
@@ -637,8 +637,14 @@
     <div class="features-grid">
       <div class="feat-card">
         <div class="feat-icon">⚡</div>
-        <h3>16x Multi-Stream Pipeline</h3>
-        <p>Utilizes multi-core asynchronous workers to push files in parallel, avoiding latency drops on large directories.</p>
+        <h3>32x Hyper-Stream Pipeline</h3>
+        <p>Utilizes multi-core asynchronous workers and 64 checkers to push files in parallel with Google Drive API pacer optimization.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">📦</div>
+        <h3>Cloud Archive Bundler (.zip)</h3>
+        <p>One-click folder compression directly on local SSD before streaming as a single archive, bypassing 100% of per-file cloud API latency.</p>
       </div>
 
       <div class="feat-card">
@@ -663,12 +669,6 @@
         <div class="feat-icon">🗑️</div>
         <h3>Instant Zero-Recycle Purge</h3>
         <p>Eradicate massive node_modules, build caches, or temporary directories in seconds, bypassing Recycle Bin lag.</p>
-      </div>
-
-      <div class="feat-card">
-        <div class="feat-icon">📦</div>
-        <h3>Ultra-Lightweight (35 KB)</h3>
-        <p>Zero Electron bloat. 100% native C# WinForms running on built-in Windows .NET Framework. Starts in under 50ms.</p>
       </div>
     </div>
 

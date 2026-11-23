@@ -64,19 +64,19 @@ namespace ZynCopy
             catch { }
         }
 
-        public void ExecuteQueue(List<string> sourcePaths, string destFolder, TransferMode mode, StreamSpeed speed)
+        public void ExecuteQueue(List<string> sourcePaths, string destFolder, TransferMode mode, StreamSpeed speed, bool bundleAsArchive = false)
         {
             _isCancelled = false;
 
             Thread worker = new Thread(new ThreadStart(delegate
             {
-                RunQueueInternal(sourcePaths, destFolder, mode, speed);
+                RunQueueInternal(sourcePaths, destFolder, mode, speed, bundleAsArchive);
             }));
             worker.IsBackground = true;
             worker.Start();
         }
 
-        private void RunQueueInternal(List<string> sourcePaths, string destFolder, TransferMode mode, StreamSpeed speed)
+        private void RunQueueInternal(List<string> sourcePaths, string destFolder, TransferMode mode, StreamSpeed speed, bool bundleAsArchive)
         {
             if (sourcePaths == null || sourcePaths.Count == 0) return;
 
@@ -88,6 +88,8 @@ namespace ZynCopy
             if (speed == StreamSpeed.Eco4x) { streams = 8; chunkSize = "64M"; }
             else if (speed == StreamSpeed.Hyper16x) { streams = 32; chunkSize = "256M"; }
 
+            List<string> tempZipsToClean = new List<string>();
+
             for (int i = 0; i < totalItems; i++)
             {
                 if (_isCancelled) break;
@@ -95,8 +97,35 @@ namespace ZynCopy
                 string src = sourcePaths[i];
                 if (string.IsNullOrEmpty(src)) continue;
 
+                string actualSourceToTransfer = src;
                 string baseName = Path.GetFileName(src.TrimEnd('\\', '/'));
                 if (string.IsNullOrEmpty(baseName)) baseName = "item_" + i;
+
+                // Handle Archive Bundle Mode for folders
+                if (bundleAsArchive && Directory.Exists(src) && mode != TransferMode.Purge)
+                {
+                    EmitProgress(new TransferProgressEventArgs
+                    {
+                        Message = string.Format(">>> Packing folder into high-speed archive: {0}.zip", baseName),
+                        ActiveFile = string.Format("Packing: {0}.zip (Native Compression)", baseName),
+                        Speed = "Packing...",
+                        Eta = "Fast",
+                        CurrentItemIndex = i,
+                        TotalItems = totalItems,
+                        Percentage = (int)((i / (double)totalItems) * 100)
+                    });
+
+                    string parentDir = Directory.GetParent(src) != null ? Directory.GetParent(src).FullName : Path.GetTempPath();
+                    string tempZip = Path.Combine(parentDir, baseName + ".zip");
+
+                    bool zipSuccess = CreateZipArchive(src, tempZip);
+                    if (zipSuccess && File.Exists(tempZip))
+                    {
+                        actualSourceToTransfer = tempZip;
+                        baseName = baseName + ".zip";
+                        tempZipsToClean.Add(tempZip);
+                    }
+                }
 
                 string itemTarget = !string.IsNullOrEmpty(destFolder) ? Path.Combine(destFolder, baseName) : null;
 
@@ -115,18 +144,28 @@ namespace ZynCopy
                 }
                 else
                 {
-                    string effectiveSource = NormalizeCloudPath(src);
+                    string effectiveSource = NormalizeCloudPath(actualSourceToTransfer);
                     string effectiveDest = NormalizeCloudPath(itemTarget);
 
                     if (!string.IsNullOrEmpty(rcloneExe))
                     {
-                        ExecuteRcloneTransfer(src, effectiveSource, effectiveDest, mode, streams, chunkSize, rcloneExe, i, totalItems);
+                        ExecuteRcloneTransfer(actualSourceToTransfer, effectiveSource, effectiveDest, mode, streams, chunkSize, rcloneExe, i, totalItems);
                     }
                     else
                     {
-                        ExecuteRobocopyTransfer(src, itemTarget, mode, streams, i, totalItems);
+                        ExecuteRobocopyTransfer(actualSourceToTransfer, itemTarget, mode, streams, i, totalItems);
                     }
                 }
+            }
+
+            // Clean up temporary local archives if any were generated
+            foreach (string tmp in tempZipsToClean)
+            {
+                try
+                {
+                    if (File.Exists(tmp)) File.Delete(tmp);
+                }
+                catch { }
             }
 
             if (!_isCancelled)
@@ -152,6 +191,34 @@ namespace ZynCopy
                     IsCompleted = true
                 });
             }
+        }
+
+        private bool CreateZipArchive(string folderPath, string zipPath)
+        {
+            try
+            {
+                if (File.Exists(zipPath)) File.Delete(zipPath);
+
+                string parentDir = Path.GetDirectoryName(folderPath);
+                string folderName = Path.GetFileName(folderPath.TrimEnd('\\', '/'));
+
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = "tar.exe";
+                psi.Arguments = string.Format("-a -cf \"{0}\" -C \"{1}\" \"{2}\"", zipPath, parentDir, folderName);
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+
+                using (Process p = Process.Start(psi))
+                {
+                    if (p != null)
+                    {
+                        p.WaitForExit();
+                        return p.ExitCode == 0 && File.Exists(zipPath);
+                    }
+                }
+            }
+            catch { }
+            return false;
         }
 
         private string NormalizeCloudPath(string path)
@@ -194,7 +261,6 @@ namespace ZynCopy
             string cloudAccel = "";
             if (sourcePath.Contains(":") || destPath.Contains(":"))
             {
-                // Turbo acceleration flags for Google Drive API
                 cloudAccel = "--drive-pacer-min-sleep 10ms --drive-pacer-burst 100 --fast-list --buffer-size 64M";
             }
 
@@ -362,7 +428,6 @@ namespace ZynCopy
                 int itemPercent;
                 int.TryParse(percentStr, out itemPercent);
 
-                // Cumulative batch percentage
                 double overall = ((itemIndex * 100.0) + itemPercent) / totalItems;
                 args.Percentage = (int)Math.Min(99, overall);
 
@@ -400,7 +465,7 @@ namespace ZynCopy
             if (File.Exists(localRclone)) return localRclone;
 
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string wingetPath = Path.Combine(localAppData, @"Microsoft\WinGet\Packages\Rclone.Rclone_Microsoft.Winget.Source_8wekyb3d8bbwe\rclone-v1.72.1-windows-amd64\rclone.exe");
+            string wingetPath = Path.Combine(localAppData, @"Microsoft\WinGet\Packages\Rclone.Rclone_Microsoft.Winget.Source_8wekyb3d8bbwe\rclone-v1.76.0-windows-amd64\rclone.exe");
             if (File.Exists(wingetPath)) return wingetPath;
 
             string[] paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';');
