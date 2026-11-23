@@ -36,6 +36,7 @@ namespace ZynCopy
                     {
                         key.SetValue("", MenuName);
                         key.SetValue("Icon", "\"" + exePath + "\",0");
+                        key.SetValue("MultiSelectModel", "Player");
                         using (RegistryKey cmdKey = key.CreateSubKey("command"))
                         {
                             if (cmdKey != null)
@@ -53,6 +54,7 @@ namespace ZynCopy
                     {
                         key.SetValue("", MenuName);
                         key.SetValue("Icon", "\"" + exePath + "\",0");
+                        key.SetValue("MultiSelectModel", "Player");
                         using (RegistryKey cmdKey = key.CreateSubKey("command"))
                         {
                             if (cmdKey != null)

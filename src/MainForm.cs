@@ -1,15 +1,20 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace ZynCopy
 {
     public class MainForm : Form
     {
+        public const string WindowTitle = "ZynCopy - Ultra-Fast Cloud & Local File Transfer";
+
         private PictureBox _picLogo;
         private TextBox _txtSource;
+        private Button _btnClearQueue;
         private ComboBox _cmbDest;
         private ComboBox _cmbSpeed;
         private Button _btnCopy;
@@ -32,8 +37,9 @@ namespace ZynCopy
 
         private CheckBox _chkContextMenu;
         private CopyEngine _engine;
+        private readonly List<string> _queuedPaths = new List<string>();
 
-        public MainForm(string initialPath = null)
+        public MainForm(string[] initialArgs = null)
         {
             _engine = new CopyEngine();
             _engine.ProgressReceived += OnEngineProgressReceived;
@@ -47,16 +53,36 @@ namespace ZynCopy
                 try { this.Icon = new Icon(iconPath); } catch { }
             }
 
-            if (!string.IsNullOrEmpty(initialPath))
+            if (initialArgs != null && initialArgs.Length > 0)
             {
-                _txtSource.Text = initialPath;
-                _lblActiveFile.Text = "Target ready: " + Path.GetFileName(initialPath);
+                AddFilesToQueue(initialArgs);
             }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == (int)Program.WM_COPYDATA)
+            {
+                try
+                {
+                    Program.COPYDATASTRUCT cds = (Program.COPYDATASTRUCT)Marshal.PtrToStructure(m.LParam, typeof(Program.COPYDATASTRUCT));
+                    string payload = Marshal.PtrToStringUni(cds.lpData);
+                    if (!string.IsNullOrEmpty(payload))
+                    {
+                        string[] files = payload.Split(new char[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                        AddFilesToQueue(files);
+                    }
+                    m.Result = (IntPtr)1;
+                    return;
+                }
+                catch { }
+            }
+            base.WndProc(ref m);
         }
 
         private void InitializeComponent()
         {
-            this.Text = "ZynCopy - High-Speed Cloud Stream";
+            this.Text = WindowTitle;
             this.Size = new Size(680, 520);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -94,7 +120,7 @@ namespace ZynCopy
             this.Controls.Add(lblTitle);
 
             Label lblSub = new Label();
-            lblSub.Text = "High-Speed Memory Stream Pipeline | By ZynOps Solutions";
+            lblSub.Text = "Single-Window Multi-Stream Engine | By ZynOps Solutions";
             lblSub.Font = fontSub;
             lblSub.ForeColor = Color.FromArgb(148, 163, 184);
             lblSub.Location = new Point(67, 36);
@@ -113,15 +139,15 @@ namespace ZynCopy
 
             // ================= INPUT SECTION =================
             Label lblSrc = new Label();
-            lblSrc.Text = "Source File or Folder (Drag & Drop here):";
+            lblSrc.Text = "Source Files or Folders (Multi-File Drag & Drop Enabled):";
             lblSrc.Font = fontBold;
             lblSrc.Location = new Point(20, 68);
-            lblSrc.Size = new Size(400, 18);
+            lblSrc.Size = new Size(420, 18);
             this.Controls.Add(lblSrc);
 
             _txtSource = new TextBox();
             _txtSource.Location = new Point(20, 88);
-            _txtSource.Size = new Size(520, 26);
+            _txtSource.Size = new Size(435, 26);
             _txtSource.BackColor = Color.FromArgb(30, 41, 59);
             _txtSource.ForeColor = Color.White;
             _txtSource.BorderStyle = BorderStyle.FixedSingle;
@@ -130,9 +156,9 @@ namespace ZynCopy
             this.Controls.Add(_txtSource);
 
             Button btnBrowseSrc = new Button();
-            btnBrowseSrc.Text = "Browse...";
-            btnBrowseSrc.Location = new Point(550, 87);
-            btnBrowseSrc.Size = new Size(95, 28);
+            btnBrowseSrc.Text = "Add...";
+            btnBrowseSrc.Location = new Point(462, 87);
+            btnBrowseSrc.Size = new Size(88, 28);
             btnBrowseSrc.BackColor = Color.FromArgb(51, 65, 85);
             btnBrowseSrc.FlatStyle = FlatStyle.Flat;
             btnBrowseSrc.FlatAppearance.BorderSize = 0;
@@ -140,8 +166,19 @@ namespace ZynCopy
             btnBrowseSrc.Click += OnBrowseSourceClick;
             this.Controls.Add(btnBrowseSrc);
 
+            _btnClearQueue = new Button();
+            _btnClearQueue.Text = "Clear";
+            _btnClearQueue.Location = new Point(557, 87);
+            _btnClearQueue.Size = new Size(88, 28);
+            _btnClearQueue.BackColor = Color.FromArgb(71, 85, 105);
+            _btnClearQueue.FlatStyle = FlatStyle.Flat;
+            _btnClearQueue.FlatAppearance.BorderSize = 0;
+            _btnClearQueue.Font = fontRegular;
+            _btnClearQueue.Click += OnClearQueueClick;
+            this.Controls.Add(_btnClearQueue);
+
             Label lblDst = new Label();
-            lblDst.Text = "Destination Target:";
+            lblDst.Text = "Target Destination Drive or Folder:";
             lblDst.Font = fontBold;
             lblDst.Location = new Point(20, 122);
             lblDst.Size = new Size(300, 18);
@@ -239,7 +276,6 @@ namespace ZynCopy
             this.Controls.Add(_btnCancel);
 
             // ================= DASHBOARD METRICS HUD =================
-            // Card 1: SPEED
             Panel pnlSpeed = CreateCard(20, 228, 200, 70);
             Label lblSpeedTitle = new Label { Text = "⚡ TRANSFER SPEED", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
             _lblSpeedValue = new Label { Text = "0.0 MB/s", Location = new Point(10, 26), Size = new Size(180, 32), Font = fontCardValue, ForeColor = Color.FromArgb(56, 189, 248) };
@@ -247,7 +283,6 @@ namespace ZynCopy
             pnlSpeed.Controls.Add(_lblSpeedValue);
             this.Controls.Add(pnlSpeed);
 
-            // Card 2: TIME REMAINING (ETA)
             Panel pnlEta = CreateCard(230, 228, 200, 70);
             Label lblEtaTitle = new Label { Text = "⏱️ ESTIMATED TIME LEFT", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
             _lblEtaValue = new Label { Text = "--", Location = new Point(10, 26), Size = new Size(180, 32), Font = fontCardValue, ForeColor = Color.FromArgb(52, 211, 153) };
@@ -255,9 +290,8 @@ namespace ZynCopy
             pnlEta.Controls.Add(_lblEtaValue);
             this.Controls.Add(pnlEta);
 
-            // Card 3: PROGRESS / TRANSFERRED
             Panel pnlProg = CreateCard(440, 228, 205, 70);
-            Label lblProgTitle = new Label { Text = "📊 TRANSFERRED STATS", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
+            Label lblProgTitle = new Label { Text = "📊 QUEUE / PROGRESS", Location = new Point(12, 10), Size = new Size(170, 15), Font = fontCardLabel, ForeColor = Color.FromArgb(148, 163, 184) };
             _lblProgressValue = new Label { Text = "Idle", Location = new Point(10, 26), Size = new Size(185, 32), Font = new Font("Segoe UI", 11.5f, FontStyle.Bold), ForeColor = Color.FromArgb(244, 244, 245) };
             pnlProg.Controls.Add(lblProgTitle);
             pnlProg.Controls.Add(_lblProgressValue);
@@ -280,9 +314,9 @@ namespace ZynCopy
 
             // Active File Label
             _lblActiveFile = new Label();
-            _lblActiveFile.Text = "Ready. Drag & drop files or choose source and destination.";
+            _lblActiveFile.Text = "Ready. Select multiple files in Explorer or drag & drop here.";
             _lblActiveFile.Location = new Point(22, 332);
-            _lblActiveFile.Size = new Size(500, 20);
+            _lblActiveFile.Size = new Size(420, 20);
             _lblActiveFile.Font = fontSub;
             _lblActiveFile.ForeColor = Color.FromArgb(203, 213, 225);
             this.Controls.Add(_lblActiveFile);
@@ -318,6 +352,66 @@ namespace ZynCopy
             this.DragDrop += OnDragDrop;
             _txtSource.DragEnter += OnDragEnter;
             _txtSource.DragDrop += OnDragDrop;
+        }
+
+        public void AddFilesToQueue(IEnumerable<string> paths)
+        {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action<IEnumerable<string>>(AddFilesToQueue), paths);
+                return;
+            }
+
+            if (paths == null) return;
+
+            int addedCount = 0;
+            foreach (string p in paths)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                string clean = p.Trim('"', ' ', '\t', '\r', '\n');
+                if (clean.StartsWith("--")) continue; // Skip flags
+
+                if (File.Exists(clean) || Directory.Exists(clean))
+                {
+                    if (!_queuedPaths.Contains(clean))
+                    {
+                        _queuedPaths.Add(clean);
+                        addedCount++;
+                    }
+                }
+            }
+
+            UpdateQueueDisplay();
+        }
+
+        private void UpdateQueueDisplay()
+        {
+            if (_queuedPaths.Count == 0)
+            {
+                _txtSource.Text = "";
+                _lblActiveFile.Text = "Ready. Drag & drop files or choose source and destination.";
+                _lblProgressValue.Text = "Idle";
+            }
+            else if (_queuedPaths.Count == 1)
+            {
+                _txtSource.Text = _queuedPaths[0];
+                _lblActiveFile.Text = "Ready: " + Path.GetFileName(_queuedPaths[0]);
+                _lblProgressValue.Text = "1 item queued";
+            }
+            else
+            {
+                string first = Path.GetFileName(_queuedPaths[0]);
+                string second = Path.GetFileName(_queuedPaths[1]);
+                _txtSource.Text = string.Format("[{0} items queued] - {1}, {2}...", _queuedPaths.Count, first, second);
+                _lblActiveFile.Text = string.Format("Queue ready: {0} files/folders queued in this window.", _queuedPaths.Count);
+                _lblProgressValue.Text = string.Format("{0} items queued", _queuedPaths.Count);
+            }
+        }
+
+        private void OnClearQueueClick(object sender, EventArgs e)
+        {
+            _queuedPaths.Clear();
+            UpdateQueueDisplay();
         }
 
         private Panel CreateCard(int x, int y, int w, int h)
@@ -368,20 +462,29 @@ namespace ZynCopy
             string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
             if (files != null && files.Length > 0)
             {
-                _txtSource.Text = files[0];
-                _lblActiveFile.Text = "Target ready: " + Path.GetFileName(files[0]);
+                AddFilesToQueue(files);
             }
         }
 
         private void OnBrowseSourceClick(object sender, EventArgs e)
         {
+            using (OpenFileDialog ofd = new OpenFileDialog())
+            {
+                ofd.Multiselect = true;
+                ofd.Title = "Select Files to Transfer (Multi-Select Enabled)";
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    AddFilesToQueue(ofd.FileNames);
+                    return;
+                }
+            }
+
             using (FolderBrowserDialog fbd = new FolderBrowserDialog())
             {
-                fbd.Description = "Select Source Folder";
+                fbd.Description = "Or Select a Folder to Transfer";
                 if (fbd.ShowDialog() == DialogResult.OK)
                 {
-                    _txtSource.Text = fbd.SelectedPath;
-                    _lblActiveFile.Text = "Selected: " + Path.GetFileName(fbd.SelectedPath);
+                    AddFilesToQueue(new string[] { fbd.SelectedPath });
                 }
             }
         }
@@ -445,14 +548,17 @@ namespace ZynCopy
 
         private void OnPurgeClick(object sender, EventArgs e)
         {
-            string src = _txtSource.Text.Trim();
-            if (string.IsNullOrEmpty(src) || (!Directory.Exists(src) && !File.Exists(src)))
+            List<string> targets = GetActiveTargets();
+            if (targets.Count == 0)
             {
-                MessageBox.Show("Please select a valid source path to delete!", "Target Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please select or queue at least one valid source to delete!", "Target Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            DialogResult res = MessageBox.Show(string.Format("Are you sure you want to permanently fast-purge:\n\n{0}\n\nThis bypasses the Recycle Bin for maximum speed and cannot be undone!", src),
+            string preview = string.Join("\n", targets.ToArray());
+            if (preview.Length > 200) preview = preview.Substring(0, 200) + "...";
+
+            DialogResult res = MessageBox.Show(string.Format("Are you sure you want to permanently fast-purge {0} item(s):\n\n{1}\n\nThis bypasses the Recycle Bin for maximum speed and cannot be undone!", targets.Count, preview),
                 "Confirm Instant Purge", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
             if (res == DialogResult.Yes)
@@ -461,16 +567,30 @@ namespace ZynCopy
                 _lblSpeedValue.Text = "Purging...";
                 _lblEtaValue.Text = "Fast";
                 _lblProgressValue.Text = "Instant Clean";
-                _engine.Execute(src, null, TransferMode.Purge, GetSelectedSpeed());
+                _engine.ExecuteQueue(targets, null, TransferMode.Purge, GetSelectedSpeed());
             }
+        }
+
+        private List<string> GetActiveTargets()
+        {
+            List<string> list = new List<string>(_queuedPaths);
+            if (list.Count == 0)
+            {
+                string raw = _txtSource.Text.Trim();
+                if (!string.IsNullOrEmpty(raw) && (File.Exists(raw) || Directory.Exists(raw)))
+                {
+                    list.Add(raw);
+                }
+            }
+            return list;
         }
 
         private void StartTransfer(TransferMode mode)
         {
-            string src = _txtSource.Text.Trim();
-            if (string.IsNullOrEmpty(src) || (!Directory.Exists(src) && !File.Exists(src)))
+            List<string> targets = GetActiveTargets();
+            if (targets.Count == 0)
             {
-                MessageBox.Show("Please select a valid source file or folder first!", "Source Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please select or queue at least one source file or folder first!", "Source Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -481,15 +601,12 @@ namespace ZynCopy
                 return;
             }
 
-            string baseName = Path.GetFileName(src.TrimEnd('\\', '/'));
-            string finalTarget = Path.Combine(dest, baseName);
-
             SetUiBusy(true);
             _lblSpeedValue.Text = "Connecting...";
             _lblEtaValue.Text = "Calculating...";
-            _lblProgressValue.Text = "Starting Stream";
-            _lblActiveFile.Text = "Connecting to pipeline: " + baseName;
-            _engine.Execute(src, finalTarget, mode, GetSelectedSpeed());
+            _lblProgressValue.Text = string.Format("0 / {0} items", targets.Count);
+            _lblActiveFile.Text = string.Format("Connecting pipeline for {0} queued item(s)...", targets.Count);
+            _engine.ExecuteQueue(targets, dest, mode, GetSelectedSpeed());
         }
 
         private void OnCancelClick(object sender, EventArgs e)
@@ -503,6 +620,7 @@ namespace ZynCopy
             _btnCopy.Enabled = !busy;
             _btnMove.Enabled = !busy;
             _btnPurge.Enabled = !busy;
+            _btnClearQueue.Enabled = !busy;
             _btnCancel.Enabled = busy;
             if (busy)
             {
@@ -541,7 +659,7 @@ namespace ZynCopy
 
             if (!string.IsNullOrEmpty(e.ActiveFile))
             {
-                _lblActiveFile.Text = "Transferring: " + e.ActiveFile;
+                _lblActiveFile.Text = e.ActiveFile;
             }
 
             if (!string.IsNullOrEmpty(e.Message))
@@ -557,6 +675,8 @@ namespace ZynCopy
                 _lblActiveFile.Text = "Transfer completed successfully!";
                 _progressBar.Value = 100;
                 _lblPercent.Text = "100%";
+                _queuedPaths.Clear();
+                UpdateQueueDisplay();
                 PopulateDrives();
             }
         }

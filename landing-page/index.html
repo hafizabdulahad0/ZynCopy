@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZynCopy - Ultra-Fast Cloud & Local File Transfer for Windows</title>
+  <meta name="description" content="Ultra-fast multi-threaded file streaming engine for Windows. Move, copy, and purge files at raw NVMe and multi-gigabit speeds with 0% C: drive cache.">
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(30, 41, 59, 0.6);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --emerald: #34d399;
+      --rose: #f43f5e;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --glow: rgba(56, 189, 248, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Glow Background */
+    .glow-bg {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1000px;
+      height: 550px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, rgba(16, 185, 129, 0.05) 50%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header Nav */
+    header {
+      padding: 24px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+
+    .brand-name {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .nav-btn {
+      padding: 8px 18px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--primary);
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-btn:hover {
+      background: var(--primary);
+      color: #0b0f19;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0 60px;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: var(--primary);
+      padding: 6px 16px;
+      border-radius: 50px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      margin-bottom: 20px;
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(135deg, #38bdf8 0%, #34d399 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 36px;
+    }
+
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.4);
+      transition: all 0.2s;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 30px -5px rgba(14, 165, 233, 0.6);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* App Preview / Interactive Simulator */
+    .app-preview-wrap {
+      margin: 50px auto 80px;
+      max-width: 760px;
+      background: #0f172a;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .window-header {
+      background: #090d16;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .window-title {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .win-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #334155;
+    }
+
+    .win-btn.close { background: #ef4444; }
+    .win-btn.min { background: #eab308; }
+    .win-btn.max { background: #22c55e; }
+
+    .window-body {
+      padding: 24px;
+    }
+
+    .hud-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .hud-card {
+      background: rgba(30, 41, 59, 0.7);
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+    }
+
+    .hud-card .title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .hud-card .val {
+      font-size: 1.4rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .hud-card .val.cyan { color: #38bdf8; }
+    .hud-card .val.green { color: #34d399; }
+    .hud-card .val.white { color: #f1f5f9; }
+
+    .sim-progress-wrap {
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 8px;
+      height: 12px;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .sim-progress-bar {
+      width: 78%;
+      height: 100%;
+      background: linear-gradient(90deg, #0ea5e9, #34d399);
+      border-radius: 8px;
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    .sim-status {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Comparison Section */
+    .section-title {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .section-title h2 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 80px;
+    }
+
+    .comp-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 32px;
+      backdrop-filter: blur(12px);
+    }
+
+    .comp-card.bad {
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+
+    .comp-card.good {
+      border-color: rgba(56, 189, 248, 0.4);
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.08);
+    }
+
+    .comp-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .comp-badge.bad { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .comp-badge.good { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+
+    .comp-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .comp-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 0.95rem;
+    }
+
+    .comp-list li span.icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    /* Features Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 100px;
+    }
+
+    .feat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 28px;
+      transition: all 0.2s;
+    }
+
+    .feat-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+    }
+
+    .feat-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(56, 189, 248, 0.1);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 18px;
+      color: var(--primary);
+    }
+
+    .feat-card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .feat-card p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Benchmarks */
+    .benchmarks-section {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 40px;
+      margin-bottom: 100px;
+    }
+
+    .bench-row {
+      margin-top: 24px;
+    }
+
+    .bench-label {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    .bench-bar-track {
+      background: rgba(30, 41, 59, 0.8);
+      height: 28px;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+    }
+
+    .bench-bar-fill {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      padding-left: 12px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .bench-bar-fill.windows {
+      width: 100%;
+      background: #475569;
+    }
+
+    .bench-bar-fill.zyn {
+      width: 12%;
+      background: linear-gradient(90deg, #0ea5e9, #10b981);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 40px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.4rem; }
+      .comparison-grid, .features-grid, .hud-cards { grid-template-columns: 1fr; }
+      header { flex-direction: column; gap: 16px; }
+      footer { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-bg"></div>
+
+  <div class="container">
+    <header>
+      <a href="#" class="brand">
+        <img src="logo.png" alt="ZynCopy Logo">
+        <span class="brand-name">ZynCopy</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#benchmarks">Benchmarks</a>
+        <a href="https://github.com/hafizabdulahad0/ZynCopy" target="_blank">GitHub</a>
+        <a href="https://github.com/hafizabdulahad0/ZynCopy/releases" class="nav-btn">Download v1.1</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="badge">
+        <span>⚡</span> ZynOps Solutions • Windows 10 & 11 • Open Source (MIT)
+      </div>
+      <h1>Ultra-Fast File Transfers.<br><span>Zero RAM. Zero Disk Cache.</span></h1>
+      <p>
+        The native multi-threaded memory streaming engine that moves, copies, and purges gigabytes across SSDs, external drives, and Google Drive without freezing Windows Explorer or filling your C: drive.
+      </p>
+
+      <div class="cta-group">
+        <a href="https://github.com/hafizabdulahad0/ZynCopy/raw/main/bin/ZynCopy-Setup.exe" class="btn-primary">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          Download Installer (.exe)
+        </a>
+        <a href="https://github.com/hafizabdulahad0/ZynCopy/raw/main/bin/ZynCopy.exe" class="btn-secondary">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Portable (.exe, 35 KB)
+        </a>
+        <a href="https://github.com/hafizabdulahad0/ZynCopy" target="_blank" class="btn-secondary">
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+      </div>
+
+      <!-- Live UI Dashboard Mockup -->
+      <div class="app-preview-wrap">
+        <div class="window-header">
+          <div class="window-title">
+            <span>⚡</span> ZynCopy - Ultra-Fast Cloud & Local File Transfer
+          </div>
+          <div class="window-controls">
+            <span class="win-btn min"></span>
+            <span class="win-btn max"></span>
+            <span class="win-btn close"></span>
+          </div>
+        </div>
+        <div class="window-body">
+          <div class="hud-cards">
+            <div class="hud-card">
+              <div class="title">⚡ Transfer Speed</div>
+              <div class="val cyan">142.8 MB/s</div>
+            </div>
+            <div class="hud-card">
+              <div class="title">⏱️ Time Left</div>
+              <div class="val green">38s</div>
+            </div>
+            <div class="hud-card">
+              <div class="title">📊 Queue Status</div>
+              <div class="val white">Item 4 of 6</div>
+            </div>
+          </div>
+
+          <div class="sim-progress-wrap">
+            <div class="sim-progress-bar"></div>
+          </div>
+
+          <div class="sim-status">
+            <span>Transferring: assets/dataset_v2.tar.gz</span>
+            <span style="color:#38bdf8; font-weight:700;">78% Complete</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison -->
+    <section class="section-title">
+      <h2>Why Built-in Windows Copy Falls Behind</h2>
+      <p>Windows Explorer copy was built 25 years ago for single floppy drives and spinning disks.</p>
+    </section>
+
+    <div class="comparison-grid">
+      <div class="comp-card bad">
+        <span class="comp-badge bad">Windows Explorer Copy</span>
+        <ul class="comp-list">
+          <li><span class="icon">❌</span> <strong>Single-threaded:</strong> One file at a time, crippling performance on cloud drives and NVMe.</li>
+          <li><span class="icon">❌</span> <strong>UI Freezes & Not Responding:</strong> Explorer locks up on millions of small project files.</li>
+          <li><span class="icon">❌</span> <strong>C: Drive Pollution:</strong> Caches hundreds of gigabytes into Windows pagefile and RAM.</li>
+          <li><span class="icon">❌</span> <strong>Window Hell:</strong> Selecting 10 files pops up 10 chaotic separate copy windows.</li>
+        </ul>
+      </div>
+
+      <div class="comp-card good">
+        <span class="comp-badge good">ZynCopy Architecture</span>
+        <ul class="comp-list">
+          <li><span class="icon">✅</span> <strong>Up to 16x Concurrent Streams:</strong> Saturates raw disk IO and multi-gigabit connections.</li>
+          <li><span class="icon">✅</span> <strong>Always Responsive:</strong> Pure asynchronous non-blocking OS pipes with dedicated HUD.</li>
+          <li><span class="icon">✅</span> <strong>0% C: Drive Cache:</strong> Memory streaming pipeline that writes directly to destination.</li>
+          <li><span class="icon">✅</span> <strong>Single-Window Queue:</strong> Select 50 files; all funnel seamlessly into one unified window.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <section id="features" class="section-title">
+      <h2>Engineered for Modern Storage</h2>
+      <p>Everything you need for lightning fast file management.</p>
+    </section>
+
+    <div class="features-grid">
+      <div class="feat-card">
+        <div class="feat-icon">⚡</div>
+        <h3>16x Multi-Stream Pipeline</h3>
+        <p>Utilizes multi-core asynchronous workers to push files in parallel, avoiding latency drops on large directories.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">🪟</div>
+        <h3>Single-Window Multi-File Queue</h3>
+        <p>Right-click 1 or 100 files in Windows Explorer; single-instance IPC routes everything into one clean transfer queue.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">☁️</div>
+        <h3>Cloud Drive Accelerator</h3>
+        <p>Direct Google Drive, OneDrive, and rclone mount streaming with optimized buffer sizes and zero local caching.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">🛡️</div>
+        <h3>Zero C: Drive Cache & RAM Safe</h3>
+        <p>Buffers data directly in transient memory buffers without writing gigabytes of scratch files to your system SSD.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">🗑️</div>
+        <h3>Instant Zero-Recycle Purge</h3>
+        <p>Eradicate massive node_modules, build caches, or temporary directories in seconds, bypassing Recycle Bin lag.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">📦</div>
+        <h3>Ultra-Lightweight (35 KB)</h3>
+        <p>Zero Electron bloat. 100% native C# WinForms running on built-in Windows .NET Framework. Starts in under 50ms.</p>
+      </div>
+    </div>
+
+    <!-- Benchmarks -->
+    <section id="benchmarks" class="benchmarks-section">
+      <div class="section-title" style="margin-bottom: 24px;">
+        <h2>Real-World Benchmark: 10 GB Mixed Source Code (15,000 files)</h2>
+        <p>Transferring to mounted cloud drive over 1 Gbps connection.</p>
+      </div>
+
+      <div class="bench-row">
+        <div class="bench-label">
+          <span>Windows 11 Explorer Copy</span>
+          <span style="color:#f87171;">14 minutes 20 seconds</span>
+        </div>
+        <div class="bench-bar-track">
+          <div class="bench-bar-fill windows">14m 20s (Single-threaded)</div>
+        </div>
+
+        <div class="bench-label">
+          <span>ZynCopy (Hyper 16x Streams)</span>
+          <span style="color:#38bdf8;">1 minute 12 seconds (12x Faster)</span>
+        </div>
+        <div class="bench-bar-track">
+          <div class="bench-bar-fill zyn">1m 12s</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div>
+        <strong>ZynCopy</strong> by <a href="https://github.com/hafizabdulahad0" target="_blank">ZynOps Solutions</a>.
+        Released under the open-source MIT License.
+      </div>
+      <div>
+        <a href="https://github.com/hafizabdulahad0/ZynCopy" target="_blank">Source Code</a> •
+        <a href="https://github.com/hafizabdulahad0/ZynCopy/issues" target="_blank">Issues & Feedback</a>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

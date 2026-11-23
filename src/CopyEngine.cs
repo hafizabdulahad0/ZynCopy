@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -31,6 +32,8 @@ namespace ZynCopy
         public bool IsCompleted { get; set; }
         public bool IsError { get; set; }
         public int ExitCode { get; set; }
+        public int CurrentItemIndex { get; set; }
+        public int TotalItems { get; set; }
     }
 
     public class CopyEngine
@@ -38,11 +41,7 @@ namespace ZynCopy
         private Process _activeProcess;
         private volatile bool _isCancelled;
 
-        // Regex for parsing Rclone stats:
-        // Example: Transferred:   1.640 GiB / 3.844 GiB, 43%, 1.377 MiB/s, ETA 27m19s
         private static readonly Regex StatsRegex = new Regex(@"Transferred:\s*([\d\.]+\s*\w+B)\s*/\s*([\d\.]+\s*\w+B),\s*(\d+)%,\s*([\d\.]+\s*\w+B/s),\s*ETA\s*([^\r\n,]+)", RegexOptions.Compiled);
-        
-        // Example: * path/to/file.ext: 56% / 898 MiB
         private static readonly Regex FileRegex = new Regex(@"\*\s+([^:]+):\s*(\d+%)", RegexOptions.Compiled);
 
         public event EventHandler<TransferProgressEventArgs> ProgressReceived;
@@ -65,43 +64,93 @@ namespace ZynCopy
             catch { }
         }
 
-        public void Execute(string sourcePath, string destPath, TransferMode mode, StreamSpeed speed)
+        public void ExecuteQueue(List<string> sourcePaths, string destFolder, TransferMode mode, StreamSpeed speed)
         {
             _isCancelled = false;
 
             Thread worker = new Thread(new ThreadStart(delegate
             {
-                RunInternal(sourcePath, destPath, mode, speed);
+                RunQueueInternal(sourcePaths, destFolder, mode, speed);
             }));
             worker.IsBackground = true;
             worker.Start();
         }
 
-        private void RunInternal(string sourcePath, string destPath, TransferMode mode, StreamSpeed speed)
+        private void RunQueueInternal(List<string> sourcePaths, string destFolder, TransferMode mode, StreamSpeed speed)
         {
+            if (sourcePaths == null || sourcePaths.Count == 0) return;
+
+            int totalItems = sourcePaths.Count;
+            string rcloneExe = FindRclone();
+
             int streams = 8;
             string chunkSize = "128M";
             if (speed == StreamSpeed.Eco4x) { streams = 4; chunkSize = "64M"; }
             else if (speed == StreamSpeed.Hyper16x) { streams = 16; chunkSize = "256M"; }
 
-            string rcloneExe = FindRclone();
-
-            if (mode == TransferMode.Purge)
+            for (int i = 0; i < totalItems; i++)
             {
-                ExecutePurge(sourcePath, rcloneExe);
-                return;
+                if (_isCancelled) break;
+
+                string src = sourcePaths[i];
+                if (string.IsNullOrEmpty(src)) continue;
+
+                string baseName = Path.GetFileName(src.TrimEnd('\\', '/'));
+                if (string.IsNullOrEmpty(baseName)) baseName = "item_" + i;
+
+                string itemTarget = !string.IsNullOrEmpty(destFolder) ? Path.Combine(destFolder, baseName) : null;
+
+                EmitProgress(new TransferProgressEventArgs
+                {
+                    Message = string.Format(">>> Starting [{0}/{1}]: {2}", i + 1, totalItems, baseName),
+                    ActiveFile = string.Format("[{0}/{1}] {2}", i + 1, totalItems, baseName),
+                    CurrentItemIndex = i,
+                    TotalItems = totalItems,
+                    Percentage = (int)((i / (double)totalItems) * 100)
+                });
+
+                if (mode == TransferMode.Purge)
+                {
+                    ExecutePurge(src, rcloneExe);
+                }
+                else
+                {
+                    string effectiveSource = NormalizeCloudPath(src);
+                    string effectiveDest = NormalizeCloudPath(itemTarget);
+
+                    if (!string.IsNullOrEmpty(rcloneExe))
+                    {
+                        ExecuteRcloneTransfer(src, effectiveSource, effectiveDest, mode, streams, chunkSize, rcloneExe, i, totalItems);
+                    }
+                    else
+                    {
+                        ExecuteRobocopyTransfer(src, itemTarget, mode, streams, i, totalItems);
+                    }
+                }
             }
 
-            string effectiveSource = NormalizeCloudPath(sourcePath);
-            string effectiveDest = NormalizeCloudPath(destPath);
-
-            if (!string.IsNullOrEmpty(rcloneExe))
+            if (!_isCancelled)
             {
-                ExecuteRcloneTransfer(effectiveSource, effectiveDest, mode, streams, chunkSize, rcloneExe);
+                EmitProgress(new TransferProgressEventArgs
+                {
+                    Message = string.Format(">>> Batch completed successfully! All {0} items transferred.", totalItems),
+                    ActiveFile = string.Format("All {0} items transferred successfully!", totalItems),
+                    Speed = "0.0 MB/s",
+                    Eta = "Complete",
+                    Percentage = 100,
+                    IsCompleted = true
+                });
             }
             else
             {
-                ExecuteRobocopyTransfer(sourcePath, destPath, mode, streams);
+                EmitProgress(new TransferProgressEventArgs
+                {
+                    Message = ">>> Transfer cancelled by user.",
+                    ActiveFile = "Transfer cancelled",
+                    Speed = "0.0 MB/s",
+                    Eta = "Stopped",
+                    IsCompleted = true
+                });
             }
         }
 
@@ -129,13 +178,21 @@ namespace ZynCopy
             return trimmed;
         }
 
-        private void ExecuteRcloneTransfer(string sourcePath, string destPath, TransferMode mode, int streams, string chunkSize, string rcloneExe)
+        private void ExecuteRcloneTransfer(string rawSource, string sourcePath, string destPath, TransferMode mode, int streams, string chunkSize, string rcloneExe, int itemIndex, int totalItems)
         {
-            string action = (mode == TransferMode.Move) ? "move" : "copy";
+            bool isFile = File.Exists(rawSource);
+            string action;
+            if (mode == TransferMode.Move)
+            {
+                action = isFile ? "moveto" : "move";
+            }
+            else
+            {
+                action = isFile ? "copyto" : "copy";
+            }
+
             string args = string.Format("{0} \"{1}\" \"{2}\" --transfers {3} --checkers {4} --drive-chunk-size {5} -P --stats 1s",
                 action, sourcePath, destPath, streams, streams * 2, chunkSize);
-
-            EmitProgress("Connecting high-speed stream pipeline (0 bytes cached on C:)...");
 
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = rcloneExe;
@@ -148,83 +205,103 @@ namespace ZynCopy
             try
             {
                 _activeProcess = Process.Start(psi);
+                if (_activeProcess == null) return;
 
-                _activeProcess.OutputDataReceived += new DataReceivedEventHandler(delegate(object sender, DataReceivedEventArgs e)
+                _activeProcess.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        ParseOutputLine(e.Data);
+                        ParseOutputLine(e.Data, itemIndex, totalItems);
                     }
-                });
+                };
 
-                _activeProcess.ErrorDataReceived += new DataReceivedEventHandler(delegate(object sender, DataReceivedEventArgs e)
+                _activeProcess.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        ParseOutputLine(e.Data);
+                        ParseOutputLine(e.Data, itemIndex, totalItems);
                     }
-                });
+                };
 
                 _activeProcess.BeginOutputReadLine();
                 _activeProcess.BeginErrorReadLine();
-
                 _activeProcess.WaitForExit();
-
-                int code = _activeProcess.ExitCode;
-                _activeProcess = null;
-
-                if (_isCancelled)
-                {
-                    EmitProgress("Operation cancelled by user.", null, null, null, 0, null, false, true, -1);
-                }
-                else
-                {
-                    EmitProgress("Transfer complete! All files verified.", "0 B/s", "Complete", "100%", 100, "Done", true, false, code);
-                }
             }
             catch (Exception ex)
             {
-                EmitProgress("Engine Error: " + ex.Message, null, null, null, 0, null, true, true, -1);
+                EmitProgress(new TransferProgressEventArgs { Message = "Transfer exception: " + ex.Message, IsError = true });
             }
         }
 
-        private void ParseOutputLine(string line)
+        private void ExecuteRobocopyTransfer(string sourcePath, string destPath, TransferMode mode, int threads, int itemIndex, int totalItems)
         {
-            string speed = null;
-            string eta = null;
-            string stats = null;
-            int percent = -1;
-            string activeFile = null;
-
-            Match match = StatsRegex.Match(line);
-            if (match.Success)
+            if (File.Exists(sourcePath))
             {
-                string transferred = match.Groups[1].Value.Trim();
-                string total = match.Groups[2].Value.Trim();
-                int.TryParse(match.Groups[3].Value, out percent);
-                speed = match.Groups[4].Value.Trim();
-                eta = match.Groups[5].Value.Trim();
-                stats = string.Format("{0} / {1} ({2}%)", transferred, total, percent);
+                string srcDir = Path.GetDirectoryName(sourcePath);
+                string fileName = Path.GetFileName(sourcePath);
+                string destDir = Path.GetDirectoryName(destPath);
+                if (!Directory.Exists(destDir)) Directory.CreateDirectory(destDir);
+
+                string moveFlag = (mode == TransferMode.Move) ? "/MOV" : "";
+                string args = string.Format("\"{0}\" \"{1}\" \"{2}\" /MT:{3} /NP /R:2 /W:2 {4}", srcDir, destDir, fileName, threads, moveFlag);
+                RunCommandLine("robocopy.exe", args, itemIndex, totalItems);
             }
             else
             {
-                Match fileMatch = FileRegex.Match(line);
-                if (fileMatch.Success)
-                {
-                    string fname = Path.GetFileName(fileMatch.Groups[1].Value.Trim());
-                    activeFile = string.Format("{0} ({1})", fname, fileMatch.Groups[2].Value);
-                }
+                if (!Directory.Exists(destPath)) Directory.CreateDirectory(destPath);
+                string moveFlag = (mode == TransferMode.Move) ? "/MOVE" : "";
+                string args = string.Format("\"{0}\" \"{1}\" /E /MT:{2} /NP /R:2 /W:2 {3}", sourcePath, destPath, threads, moveFlag);
+                RunCommandLine("robocopy.exe", args, itemIndex, totalItems);
             }
-
-            EmitProgress(line, speed, eta, stats, percent, activeFile);
         }
 
-        private void ExecuteRobocopyTransfer(string sourcePath, string destPath, TransferMode mode, int streams)
+        private void ExecutePurge(string path, string rcloneExe)
         {
-            string action = (mode == TransferMode.Move) ? "/MOV" : "";
-            string args = string.Format("\"{0}\" \"{1}\" /E {2} /MT:{3} /NP /R:2 /W:2", sourcePath, destPath, action, streams);
+            EmitProgress(new TransferProgressEventArgs { Message = "Fast-purging target: " + path, ActiveFile = "Purging: " + Path.GetFileName(path) });
 
-            ProcessStartInfo psi = new ProcessStartInfo("robocopy.exe", args);
+            if (File.Exists(path))
+            {
+                try
+                {
+                    File.Delete(path);
+                    EmitProgress(new TransferProgressEventArgs { Message = "Purged file: " + path });
+                }
+                catch (Exception ex)
+                {
+                    EmitProgress(new TransferProgressEventArgs { Message = "Purge error: " + ex.Message, IsError = true });
+                }
+                return;
+            }
+
+            if (Directory.Exists(path))
+            {
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = "cmd.exe";
+                psi.Arguments = string.Format("/c \"rd /s /q \"\"{0}\"\"\"", path);
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+
+                try
+                {
+                    _activeProcess = Process.Start(psi);
+                    if (_activeProcess != null)
+                    {
+                        _activeProcess.WaitForExit();
+                        EmitProgress(new TransferProgressEventArgs { Message = "Purged directory: " + path });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    EmitProgress(new TransferProgressEventArgs { Message = "Purge error: " + ex.Message, IsError = true });
+                }
+            }
+        }
+
+        private void RunCommandLine(string exe, string args, int itemIndex, int totalItems)
+        {
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = exe;
+            psi.Arguments = args;
             psi.UseShellExecute = false;
             psi.RedirectStandardOutput = true;
             psi.CreateNoWindow = true;
@@ -232,107 +309,105 @@ namespace ZynCopy
             try
             {
                 _activeProcess = Process.Start(psi);
-                _activeProcess.OutputDataReceived += new DataReceivedEventHandler(delegate(object sender, DataReceivedEventArgs e)
+                if (_activeProcess != null)
                 {
-                    if (!string.IsNullOrEmpty(e.Data))
+                    _activeProcess.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
                     {
-                        EmitProgress(e.Data);
-                    }
-                });
-                _activeProcess.BeginOutputReadLine();
-                _activeProcess.WaitForExit();
-                int code = _activeProcess.ExitCode;
-                _activeProcess = null;
-                EmitProgress("Operation complete.", "Done", "0s", "100%", 100, "Done", true, false, code);
+                        if (!string.IsNullOrEmpty(e.Data))
+                        {
+                            EmitProgress(new TransferProgressEventArgs
+                            {
+                                Message = e.Data,
+                                CurrentItemIndex = itemIndex,
+                                TotalItems = totalItems,
+                                Percentage = (int)(((itemIndex + 0.5) / totalItems) * 100)
+                            });
+                        }
+                    };
+                    _activeProcess.BeginOutputReadLine();
+                    _activeProcess.WaitForExit();
+                }
             }
             catch (Exception ex)
             {
-                EmitProgress("Robocopy Error: " + ex.Message, null, null, null, 0, null, true, true, -1);
+                EmitProgress(new TransferProgressEventArgs { Message = "Command error: " + ex.Message, IsError = true });
             }
         }
 
-        private void ExecutePurge(string targetPath, string rcloneExe)
+        private void ParseOutputLine(string line, int itemIndex, int totalItems)
         {
-            EmitProgress("Instant Purge in progress...");
-            string cloudPath = NormalizeCloudPath(targetPath);
-            if (!string.IsNullOrEmpty(rcloneExe))
+            TransferProgressEventArgs args = new TransferProgressEventArgs
             {
-                try
-                {
-                    Process p = Process.Start(new ProcessStartInfo(rcloneExe, string.Format("purge \"{0}\"", cloudPath)) { UseShellExecute = false, CreateNoWindow = true });
-                    p.WaitForExit();
-                }
-                catch { }
+                Message = line,
+                CurrentItemIndex = itemIndex,
+                TotalItems = totalItems
+            };
+
+            Match statsMatch = StatsRegex.Match(line);
+            if (statsMatch.Success)
+            {
+                string transferred = statsMatch.Groups[1].Value.Trim();
+                string total = statsMatch.Groups[2].Value.Trim();
+                string percentStr = statsMatch.Groups[3].Value.Trim();
+                string speed = statsMatch.Groups[4].Value.Trim();
+                string eta = statsMatch.Groups[5].Value.Trim();
+
+                int itemPercent;
+                int.TryParse(percentStr, out itemPercent);
+
+                // Cumulative batch percentage
+                double overall = ((itemIndex * 100.0) + itemPercent) / totalItems;
+                args.Percentage = (int)Math.Min(99, overall);
+
+                args.TransferredStats = string.Format("{0} / {1} (Item {2}/{3})", transferred, total, itemIndex + 1, totalItems);
+                args.Speed = speed;
+                args.Eta = eta;
             }
 
-            try
+            Match fileMatch = FileRegex.Match(line);
+            if (fileMatch.Success)
             {
-                if (Directory.Exists(targetPath))
-                {
-                    Process p = Process.Start(new ProcessStartInfo("cmd.exe", "/c rd /s /q \"" + targetPath + "\"") { UseShellExecute = false, CreateNoWindow = true });
-                    p.WaitForExit();
-                }
-                else if (File.Exists(targetPath))
-                {
-                    File.Delete(targetPath);
-                }
-                EmitProgress("Purge complete: Target removed.", "Instant", "0s", "100%", 100, "Deleted", true, false, 0);
+                args.ActiveFile = string.Format("[{0}/{1}] {2}", itemIndex + 1, totalItems, fileMatch.Groups[1].Value.Trim());
             }
-            catch (Exception ex)
+
+            EmitProgress(args);
+        }
+
+        private void EmitProgress(string msg)
+        {
+            EmitProgress(new TransferProgressEventArgs { Message = msg });
+        }
+
+        private void EmitProgress(TransferProgressEventArgs args)
+        {
+            EventHandler<TransferProgressEventArgs> handler = ProgressReceived;
+            if (handler != null)
             {
-                EmitProgress("Purge error: " + ex.Message, null, null, null, 0, null, true, true, -1);
+                handler(this, args);
             }
         }
 
         private string FindRclone()
         {
-            string appDir = AppDomain.CurrentDomain.BaseDirectory;
-            string localRclone = Path.Combine(appDir, "rclone.exe");
+            string localRclone = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "rclone.exe");
             if (File.Exists(localRclone)) return localRclone;
 
-            string pathEnv = Environment.GetEnvironmentVariable("PATH");
-            if (!string.IsNullOrEmpty(pathEnv))
-            {
-                string[] paths = pathEnv.Split(';');
-                foreach (string p in paths)
-                {
-                    string candidate = Path.Combine(p.Trim(), "rclone.exe");
-                    if (File.Exists(candidate)) return candidate;
-                }
-            }
-
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string wingetPath = Path.Combine(localAppData, @"Microsoft\WinGet\Packages");
-            if (Directory.Exists(wingetPath))
+            string wingetPath = Path.Combine(localAppData, @"Microsoft\WinGet\Packages\Rclone.Rclone_Microsoft.Winget.Source_8wekyb3d8bbwe\rclone-v1.72.1-windows-amd64\rclone.exe");
+            if (File.Exists(wingetPath)) return wingetPath;
+
+            string[] paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';');
+            foreach (string p in paths)
             {
                 try
                 {
-                    string[] matches = Directory.GetFiles(wingetPath, "rclone.exe", SearchOption.AllDirectories);
-                    if (matches.Length > 0) return matches[0];
+                    string candidate = Path.Combine(p.Trim(), "rclone.exe");
+                    if (File.Exists(candidate)) return candidate;
                 }
                 catch { }
             }
 
             return null;
-        }
-
-        private void EmitProgress(string msg, string speed = null, string eta = null, string stats = null, int percent = -1, string activeFile = null, bool isCompleted = false, bool isError = false, int exitCode = 0)
-        {
-            EventHandler<TransferProgressEventArgs> handler = ProgressReceived;
-            if (handler != null)
-            {
-                TransferProgressEventArgs args = new TransferProgressEventArgs();
-                args.Message = msg;
-                args.Speed = speed;
-                args.Eta = eta;
-                args.TransferredStats = stats;
-                args.Percentage = percent;
-                args.ActiveFile = activeFile;
-                args.IsCompleted = isCompleted;
-                args.IsError = isError;
-                args.ExitCode = exitCode;
-                handler(this, args);
-            }
         }
     }
 }
