@@ -43,6 +43,24 @@ When you copy large files or thousands of items to cloud drives (Google Drive, O
 
 ---
 
+## 📸 Screenshots & Use Cases
+
+### 1. Cloud Archive Bundler & 32x Streaming Engine
+Bypass Google Drive small-file HTTPS latency by automatically bundling folders into a single `.zip` archive on local NVMe SSD and streaming directly to cloud remotes at line speed with 0% `C:` drive cache wear:
+
+<p align="center">
+  <img src="docs/screenshots/zyncopy-bundler-usecase.png" alt="ZynCopy Cloud Archive Bundler" width="900" />
+</p>
+
+### 2. Windows Explorer Right-Click & Single-Window Queue
+Select dozens of files or folders in Windows File Explorer; ZynCopy routes them all into one clean, unified progress window using Win32 IPC, preventing multiple window popups:
+
+<p align="center">
+  <img src="docs/screenshots/zyncopy-explorer-usecase.png" alt="ZynCopy Windows Explorer Integration" width="900" />
+</p>
+
+---
+
 ## ✨ Features
 
 - **⚡ 32x Hyper-Stream Pipeline & API Acceleration:** Transfers up to 32 files concurrently with 64 checkers, adaptive Google Drive API pacer optimization, and full network saturation.
