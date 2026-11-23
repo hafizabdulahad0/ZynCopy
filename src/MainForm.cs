@@ -220,8 +220,8 @@ namespace ZynCopy
             _cmbSpeed.BackColor = Color.FromArgb(30, 41, 59);
             _cmbSpeed.ForeColor = Color.White;
             _cmbSpeed.Font = fontRegular;
-            _cmbSpeed.Items.Add("🚀 Turbo (16x Streams)");
             _cmbSpeed.Items.Add("🌪️ Hyper (32x Streams)");
+            _cmbSpeed.Items.Add("🚀 Turbo (16x Streams)");
             _cmbSpeed.Items.Add("⚡ Eco (8x Streams)");
             _cmbSpeed.SelectedIndex = 0;
             this.Controls.Add(_cmbSpeed);
@@ -529,9 +529,9 @@ namespace ZynCopy
 
         private StreamSpeed GetSelectedSpeed()
         {
-            if (_cmbSpeed.SelectedIndex == 1) return StreamSpeed.Hyper16x;
-            if (_cmbSpeed.SelectedIndex == 2) return StreamSpeed.Eco4x;
-            return StreamSpeed.Turbo8x;
+            if (_cmbSpeed.SelectedIndex == 0) return StreamSpeed.Hyper16x; // 32 streams
+            if (_cmbSpeed.SelectedIndex == 2) return StreamSpeed.Eco4x;    // 8 streams
+            return StreamSpeed.Turbo8x;                                    // 16 streams
         }
 
         private string GetCleanDestinationPath()
