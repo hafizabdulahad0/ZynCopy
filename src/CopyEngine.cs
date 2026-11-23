@@ -83,10 +83,10 @@ namespace ZynCopy
             int totalItems = sourcePaths.Count;
             string rcloneExe = FindRclone();
 
-            int streams = 8;
+            int streams = 16;
             string chunkSize = "128M";
-            if (speed == StreamSpeed.Eco4x) { streams = 4; chunkSize = "64M"; }
-            else if (speed == StreamSpeed.Hyper16x) { streams = 16; chunkSize = "256M"; }
+            if (speed == StreamSpeed.Eco4x) { streams = 8; chunkSize = "64M"; }
+            else if (speed == StreamSpeed.Hyper16x) { streams = 32; chunkSize = "256M"; }
 
             for (int i = 0; i < totalItems; i++)
             {
@@ -191,8 +191,15 @@ namespace ZynCopy
                 action = isFile ? "copyto" : "copy";
             }
 
-            string args = string.Format("{0} \"{1}\" \"{2}\" --transfers {3} --checkers {4} --drive-chunk-size {5} -P --stats 1s",
-                action, sourcePath, destPath, streams, streams * 2, chunkSize);
+            string cloudAccel = "";
+            if (sourcePath.Contains(":") || destPath.Contains(":"))
+            {
+                // Turbo acceleration flags for Google Drive API
+                cloudAccel = "--drive-pacer-min-sleep 10ms --drive-pacer-burst 100 --fast-list --buffer-size 64M";
+            }
+
+            string args = string.Format("{0} \"{1}\" \"{2}\" --transfers {3} --checkers {4} --drive-chunk-size {5} {6} -P --stats 1s",
+                action, sourcePath, destPath, streams, streams * 2, chunkSize, cloudAccel);
 
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = rcloneExe;
